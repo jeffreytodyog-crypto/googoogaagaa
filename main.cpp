@@ -383,6 +383,7 @@ public:
         int maxDelayFrames = isWave ? m_maxTicksWave : m_maxTicksNormal;
 
         int ticksFrame0 = getSurvivalTicks(pl, p1, p2, isDual, 0, push, targetHorizon, isWave);
+        printf("[InputBuffer] CLICK DETECTED! Immediate survival: %d / %d ticks\n", ticksFrame0, targetHorizon);
         if (ticksFrame0 >= targetHorizon) {
             m_gameHolding = push;
             return true;
