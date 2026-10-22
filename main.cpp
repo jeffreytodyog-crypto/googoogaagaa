@@ -156,6 +156,8 @@ public:
         m_waitTicks = -1;
         m_queuedOpposite = false;
 
+        log::info("CYCLE PRESET HIT! New index: {}", m_presetIndex); // <--- ADD THIS LINE
+        
         switch (m_presetIndex) {
             case 0:
                 m_enabled = true;  m_maxTicksNormal = 2;  m_maxTicksWave = 2;
