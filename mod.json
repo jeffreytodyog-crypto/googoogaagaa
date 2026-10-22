@@ -1,0 +1,10 @@
+{
+    "geode": "v3.0.0",
+    "gd": {
+        "win": "2.206"
+    },
+    "id": "jeffreytodyog.trajectory-buffer",
+    "name": "Trajectory Input Buffer",
+    "version": "v1.0.0",
+    "developer": "jeffreytodyog"
+}
