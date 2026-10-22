@@ -1,0 +1,27 @@
+name: Build Geode Mod
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build the Mod
+        uses: geode-sdk/build-geode-mod@main
+        id: build
+        with:
+          sdk: 'latest'
+          cli: 'latest'
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-mod-windows
+          path: ${{ steps.build.outputs.build-output }}
