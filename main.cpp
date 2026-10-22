@@ -442,7 +442,7 @@ public:
 
         log::info("Player update is running..."); // <--- ADD THIS LINE
         
-        if (GetAsyncKeyState(VK_END) & 1) {
+if (GetAsyncKeyState('H') & 1) {
             cyclePreset();
         }
 
