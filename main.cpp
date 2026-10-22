@@ -106,10 +106,6 @@ private:
             case GameObjectType::AnimatedHazard:
             case GameObjectType::CollisionObject:
             case GameObjectType::Slope:
-            // VERIFY these enum names compile on your GD/Geode version.
-            // If any fails, delete that line — the sim will still work, it
-            // just won't account for that object class in predictions.
-            case GameObjectType::Slope:
                 return true;
             default:
                 return false;
