@@ -438,7 +438,7 @@ public:
         PlayLayer* pl = PlayLayer::get();
         if (!pl || player != pl->m_player1) return;
 
-        if (GetAsyncKeyState(VK_ESCAPE) & 1) {
+        if (GetAsyncKeyState(VK_END) & 1) {
             cyclePreset();
         }
 
