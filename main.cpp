@@ -9,6 +9,7 @@
 #include <Geode/binding/RingObject.hpp>
 #include <Windows.h>
 #include <cstdio>
+#include <vector>
 
 using namespace geode::prelude;
 
@@ -35,7 +36,7 @@ private:
     bool m_queuedOpposite = false;
     float m_frameDt = 0.25f;
 
-    gd::vector<GameObject*> m_collisionScratch;
+    std::vector<GameObject*> m_collisionScratch;
 
     PlayerObject* createTrajectoryPlayer() {
         PlayLayer* pl = PlayLayer::get();
@@ -76,11 +77,6 @@ private:
         sim->m_gravity        = real->m_gravity;
         sim->m_speedMultiplier = real->m_speedMultiplier;
 
-        // CRITICAL FIX: These were missing. Without them, the sim player
-        // falls through the floor and ignores all spikes.
-        sim->m_collisionLayer = real->m_collisionLayer;
-        sim->m_collisionMask  = real->m_collisionMask;
-
         sim->m_isShip    = real->m_isShip;
         sim->m_isBall    = real->m_isBall;
         sim->m_isBird    = real->m_isBird;
@@ -95,7 +91,6 @@ private:
 
     bool isCollisionRelevant(GameObject* obj) const {
         if (!obj) return false;
-        // Fixed: Removed the weird dead cast here
         switch (obj->m_objectType) {
             case GameObjectType::Solid:
             case GameObjectType::Hazard:
@@ -403,7 +398,6 @@ public:
         PlayLayer* pl = PlayLayer::get();
         if (!pl || player != pl->m_player1) return;
         
-        // Fixed: Changed 'H' to VK_F6 so it matches the console instructions
         if (GetAsyncKeyState(VK_F6) & 1) {
             cyclePreset();
         }
@@ -452,7 +446,7 @@ public:
     }
 
     void doSimCollisionCheck(GJBaseGameLayer* layer, PlayerObject* player,
-                             gd::vector<GameObject*>* vec, int objectsCount, float dt) {
+                             std::vector<GameObject*>* vec, int objectsCount, float dt) {
         m_collisionScratch.clear();
         m_collisionScratch.reserve(objectsCount);
         for (int i = 0; i < objectsCount; i++) {
@@ -484,8 +478,8 @@ class $modify(BufPlayLayer, PlayLayer) {
         (void)self.setHookPriority("PlayLayer::flipGravity", -1000000);
     }
 
-    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
+    bool init(GJGameLevel* level, bool dontCreateObjects) {
+        if (!PlayLayer::init(level, dontCreateObjects)) return false;
         s_sim.init();
         return true;
     }
@@ -529,7 +523,7 @@ class $modify(BufHardStreak, HardStreak) {
 
 class $modify(BufEffectGameObject, EffectGameObject) {
     static void onModify(auto& self) { (void)self.setHookPriority("EffectGameObject::triggerObject", -1000000); }
-    void triggerObject(GJBaseGameLayer* p0, int p1, const gd::vector<int>* p2) {
+    void triggerObject(GJBaseGameLayer* p0, int p1, const std::vector<int>* p2) {
         if (s_sim.isSimulating()) return;
         EffectGameObject::triggerObject(p0, p1, p2);
     }
@@ -592,7 +586,7 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
         GJBaseGameLayer::handleButton(down, button, isPlayer1);
     }
 
-    void collisionCheckObjects(PlayerObject* player, gd::vector<GameObject*>* vec, int objectsCount, float dt) {
+    void collisionCheckObjects(PlayerObject* player, std::vector<GameObject*>* vec, int objectsCount, float dt) {
         if (s_sim.isSimulating()) {
             s_sim.doSimCollisionCheck(this, player, vec, objectsCount, dt);
             return;
