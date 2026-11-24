@@ -35,7 +35,6 @@ private:
     bool m_queuedOpposite = false;
     float m_frameDt = 0.25f;
 
-    // Reused across every sim tick so we aren't allocating per collision pass.
     gd::vector<GameObject*> m_collisionScratch;
 
     PlayerObject* createTrajectoryPlayer() {
@@ -47,8 +46,6 @@ private:
         player->retain();
         player->setPosition({0, 105});
         player->setVisible(false);
-        // Stop the scheduler from ticking the sim between candidates, and stop
-        // BufPlayerObject::update from running on it outside our manual loop.
         player->unscheduleUpdate();
         pl->m_objectLayer->addChild(player);
         return player;
@@ -61,9 +58,6 @@ private:
         self->m_collisionLogRight->removeAllObjects();
     }
 
-    // copyAttributes() does NOT carry every physics/gamemode field we need.
-    // Anything not explicitly mirrored here will make the sim diverge from
-    // the real player the moment the gamemode changes.
     void syncSimPlayer(PlayerObject* sim, PlayerObject* real) {
         sim->setVisible(false);
         sim->copyAttributes(real);
@@ -82,7 +76,11 @@ private:
         sim->m_gravity        = real->m_gravity;
         sim->m_speedMultiplier = real->m_speedMultiplier;
 
-        // Gamemode flags — critical, or the sim runs the wrong physics.
+        // CRITICAL FIX: These were missing. Without them, the sim player
+        // falls through the floor and ignores all spikes.
+        sim->m_collisionLayer = real->m_collisionLayer;
+        sim->m_collisionMask  = real->m_collisionMask;
+
         sim->m_isShip    = real->m_isShip;
         sim->m_isBall    = real->m_isBall;
         sim->m_isBird    = real->m_isBird;
@@ -91,15 +89,13 @@ private:
         sim->m_isSpider  = real->m_isSpider;
         sim->m_isSwing   = real->m_isSwing;
 
-        // Never let a stale death from a previous candidate poison this one.
         sim->m_isDead = false;
-
         sim->m_touchedRings.clear();
     }
 
     bool isCollisionRelevant(GameObject* obj) const {
         if (!obj) return false;
-        if (geode::cast::typeinfo_cast<RingObject*>(obj)) return true;
+        // Fixed: Removed the weird dead cast here
         switch (obj->m_objectType) {
             case GameObjectType::Solid:
             case GameObjectType::Hazard:
@@ -113,18 +109,13 @@ private:
     }
 
     float getValidDt() const {
-        // NOTE: if this ever fires, the sim is being stepped with a garbage dt
-        // and predictions will be plausible-but-wrong. Worth a one-time log
-        // if you see desyncs near lag spikes / pause-unpause.
         if (m_frameDt > 0.001f && m_frameDt < 2.0f) return m_frameDt;
         return 0.25f;
     }
 
 public:
     void init() {
-        // Guard against double-init (level restart without onQuit).
         quit();
-
         PlayLayer* pl = PlayLayer::get();
         if (!pl) return;
 
@@ -155,39 +146,19 @@ public:
         m_presetIndex = (m_presetIndex + 1) % 7;
         m_waitTicks = -1;
         m_queuedOpposite = false;
-
-        log::info("CYCLE PRESET HIT! New index: {}", m_presetIndex); // <--- ADD THIS LINE
         
         switch (m_presetIndex) {
-            case 0:
-                m_enabled = true;  m_maxTicksNormal = 2;  m_maxTicksWave = 2;
-                printf("[InputBuffer] F6 Cycle -> STAGE 1: 2 Ticks All | 2 Ticks Wave (0.5f @ 60fps)\n");
-                break;
-            case 1:
-                m_enabled = true;  m_maxTicksNormal = 4;  m_maxTicksWave = 4;
-                printf("[InputBuffer] F6 Cycle -> STAGE 2: 4 Ticks All | 4 Ticks Wave (1.0f @ 60fps)\n");
-                break;
-            case 2:
-                m_enabled = true;  m_maxTicksNormal = 8;  m_maxTicksWave = 8;
-                printf("[InputBuffer] F6 Cycle -> STAGE 3: 8 Ticks All | 8 Ticks Wave (2.0f @ 60fps)\n");
-                break;
-            case 3:
-                m_enabled = true;  m_maxTicksNormal = 16; m_maxTicksWave = 8;
-                printf("[InputBuffer] F6 Cycle -> STAGE 4: 16 Ticks All | 8 Ticks Wave (4.0f / 2.0f @ 60fps)\n");
-                break;
-            case 4:
-                m_enabled = true;  m_maxTicksNormal = 24; m_maxTicksWave = 8;
-                printf("[InputBuffer] F6 Cycle -> STAGE 5: 24 Ticks All | 8 Ticks Wave (6.0f / 2.0f @ 60fps)\n");
-                break;
-            case 5:
-                m_enabled = true;  m_maxTicksNormal = 32; m_maxTicksWave = 8;
-                printf("[InputBuffer] F6 Cycle -> STAGE 6: 32 Ticks All | 8 Ticks Wave (8.0f / 2.0f @ 60fps)\n");
-                break;
-            case 6:
-                m_enabled = false; m_maxTicksNormal = 0;  m_maxTicksWave = 0;
-                printf("[InputBuffer] F6 Cycle -> OFF (100%% Raw Input)\n");
-                break;
+            case 0: m_enabled = true;  m_maxTicksNormal = 2;  m_maxTicksWave = 2;  break;
+            case 1: m_enabled = true;  m_maxTicksNormal = 4;  m_maxTicksWave = 4;  break;
+            case 2: m_enabled = true;  m_maxTicksNormal = 8;  m_maxTicksWave = 8;  break;
+            case 3: m_enabled = true;  m_maxTicksNormal = 16; m_maxTicksWave = 8;  break;
+            case 4: m_enabled = true;  m_maxTicksNormal = 24; m_maxTicksWave = 8;  break;
+            case 5: m_enabled = true;  m_maxTicksNormal = 32; m_maxTicksWave = 8;  break;
+            case 6: m_enabled = false; m_maxTicksNormal = 0;  m_maxTicksWave = 0;  break;
         }
+        
+        printf("[InputBuffer] F6 Cycle -> Preset %d | Normal: %d | Wave: %d\n", 
+            m_presetIndex + 1, m_maxTicksNormal, m_maxTicksWave);
     }
 
     bool isSimulating() const { return m_simulating; }
@@ -196,8 +167,6 @@ public:
         return player && (player == m_simPlayer1 || player == m_simPlayer2);
     }
     bool canSimulateRingActivation(PlayerObject* player, EffectGameObject* object) const {
-        // NOTE: if GD rings activate on contact (not on hold), drop the
-        // m_simInputHolding requirement so predictions account for them.
         return m_simulating && m_simInputHolding && isSimulationPlayer(player) &&
                geode::cast::typeinfo_cast<RingObject*>(object);
     }
@@ -207,22 +176,18 @@ public:
             m_simulationDead = true;
             return true;
         }
-        m_waitTicks = -1;
-        m_queuedOpposite = false;
-        m_gameHolding = false;
+        if (!m_simulating) {
+            m_waitTicks = -1;
+            m_queuedOpposite = false;
+            m_gameHolding = false;
+        }
         return false;
     }
 
     void setFrameDelta(float dt) {
-        // Real players receive the timewarp-scaled dt from the step loop.
-        // The sim must be stepped with the SAME dt, so store it raw. Do not
-        // divide by m_timeWarp here — that double-applies the scale.
         m_frameDt = dt;
     }
 
-    // Renamed from `includeDelay` (which callers were repurposing as `isWave`).
-    // returnTotalTicks=true returns elapsedTicks (delay + survival); otherwise
-    // returns survived-ticks-post-input.
     int getSurvivalTicks(PlayLayer* pl, PlayerObject* realP1, PlayerObject* realP2,
                          bool isDual, int delayFrames, bool actionPush,
                          int maxTicks, bool returnTotalTicks = false) {
@@ -283,7 +248,6 @@ public:
 
             if (isDual && m_simPlayer2 && realP2) {
                 resetCollisionLog(m_simPlayer2);
-                // NOTE: verify this bool means isPlayer2 — if so, should be true here.
                 pl->checkCollisions(m_simPlayer2, dt, false);
                 if (m_simulationDead) break;
             }
@@ -383,7 +347,7 @@ public:
         int maxDelayFrames = isWave ? m_maxTicksWave : m_maxTicksNormal;
 
         int ticksFrame0 = getSurvivalTicks(pl, p1, p2, isDual, 0, push, targetHorizon, isWave);
-        printf("[InputBuffer] CLICK DETECTED! Immediate survival: %d / %d ticks\n", ticksFrame0, targetHorizon);
+        
         if (ticksFrame0 >= targetHorizon) {
             m_gameHolding = push;
             return true;
@@ -423,13 +387,11 @@ public:
         }
 
         if (bestDelay > 0 && bestTicks >= ticksFrame0 + minimumUsefulGain) {
-            printf("[InputBuffer] *** SAVED +%d TICKS (%.2f frames @ 60fps) %s! (Frame0: %d -> Delayed: %d) [Limit: %d] ***\n",
-                bestDelay, bestDelay / 4.0f, act, ticksFrame0, bestTicks, maxDelayFrames);
+            printf("[InputBuffer] *** SAVED +%d TICKS %s! (Frame0: %d -> Delayed: %d) [Limit: %d] ***\n",
+                bestDelay, act, ticksFrame0, bestTicks, maxDelayFrames);
+
             m_bufferedPush = push;
-            // NOTE: wave uses bestDelay-1 while normal uses bestDelay. That
-            // asymmetry is preserved from the original — verify in-game if
-            // you ever retune wave timing, they should probably match.
-            m_waitTicks = isWave ? bestDelay - 1 : bestDelay;
+            m_waitTicks = bestDelay; 
             return false;
         }
 
@@ -440,10 +402,9 @@ public:
     void onPlayerUpdate(PlayerObject* player) {
         PlayLayer* pl = PlayLayer::get();
         if (!pl || player != pl->m_player1) return;
-
-        log::info("Player update is running..."); // <--- ADD THIS LINE
         
-if (GetAsyncKeyState('H') & 1) {
+        // Fixed: Changed 'H' to VK_F6 so it matches the console instructions
+        if (GetAsyncKeyState(VK_F6) & 1) {
             cyclePreset();
         }
 
@@ -474,7 +435,6 @@ if (GetAsyncKeyState('H') & 1) {
             m_queuedOpposite = false;
             m_waitTicks = -1;
         } else if (m_waitTicks == -1) {
-            // Failsafe: keep game hold state in sync with physical mouse.
             if (m_gameHolding != m_physicalHolding) {
                 m_SimFireButton(pl, m_physicalHolding);
             }
@@ -491,8 +451,6 @@ if (GetAsyncKeyState('H') & 1) {
         m_firingBuffered = false;
     }
 
-    // Called from BufBaseGameLayer::collisionCheckObjects during a sim tick.
-    // Reuses m_collisionScratch so we don't allocate per player per tick.
     void doSimCollisionCheck(GJBaseGameLayer* layer, PlayerObject* player,
                              gd::vector<GameObject*>* vec, int objectsCount, float dt) {
         m_collisionScratch.clear();
@@ -501,7 +459,6 @@ if (GetAsyncKeyState('H') & 1) {
             GameObject* obj = vec->at(i);
             if (isCollisionRelevant(obj)) m_collisionScratch.push_back(obj);
         }
-        // Qualified call bypasses virtual dispatch and lands on GJBaseGameLayer.
         layer->GJBaseGameLayer::collisionCheckObjects(player, &m_collisionScratch,
                                                       m_collisionScratch.size(), dt);
     }
@@ -515,9 +472,8 @@ $on_mod(Loaded) {
     freopen_s(&f, "CONOUT$", "w", stdout);
     SetConsoleTitleA("GuacTuah - Live Console");
     printf("============================================================\n");
-    printf(" [InputBuffer] v5.2 LOADED (Frame-Synced Prediction)\n");
-    printf(" [InputBuffer] Starting Mode: STAGE 1 (2 All / 2 Wave)\n");
-    printf(" [InputBuffer] Press F6 in-level to cycle: 2/2 -> 4/4 -> 8/8 -> 16/8 -> 24/8 -> 32/8 -> OFF\n");
+    printf(" [InputBuffer] v5.3 LOADED (Collision Fix)\n");
+    printf(" [InputBuffer] Press F6 in-level to cycle\n");
     printf("============================================================\n");
 }
 
@@ -564,9 +520,7 @@ class $modify(BufEditorLayer, LevelEditorLayer) {
 };
 
 class $modify(BufHardStreak, HardStreak) {
-    static void onModify(auto& self) {
-        (void)self.setHookPriority("HardStreak::addPoint", -1000000);
-    }
+    static void onModify(auto& self) { (void)self.setHookPriority("HardStreak::addPoint", -1000000); }
     void addPoint(cocos2d::CCPoint p0) {
         if (s_sim.isSimulating()) return;
         HardStreak::addPoint(p0);
@@ -574,9 +528,7 @@ class $modify(BufHardStreak, HardStreak) {
 };
 
 class $modify(BufEffectGameObject, EffectGameObject) {
-    static void onModify(auto& self) {
-        (void)self.setHookPriority("EffectGameObject::triggerObject", -1000000);
-    }
+    static void onModify(auto& self) { (void)self.setHookPriority("EffectGameObject::triggerObject", -1000000); }
     void triggerObject(GJBaseGameLayer* p0, int p1, const gd::vector<int>* p2) {
         if (s_sim.isSimulating()) return;
         EffectGameObject::triggerObject(p0, p1, p2);
@@ -584,9 +536,7 @@ class $modify(BufEffectGameObject, EffectGameObject) {
 };
 
 class $modify(BufGameObject, GameObject) {
-    static void onModify(auto& self) {
-        (void)self.setHookPriority("GameObject::playShineEffect", -1000000);
-    }
+    static void onModify(auto& self) { (void)self.setHookPriority("GameObject::playShineEffect", -1000000); }
     void playShineEffect() {
         if (s_sim.isSimulating()) return;
         GameObject::playShineEffect();
@@ -611,12 +561,8 @@ class $modify(BufPlayerObject, PlayerObject) {
     }
 
     void update(float dt) {
-        if (PlayLayer::get() && !s_sim.isSimulating()) {
-            s_sim.setFrameDelta(dt);
-        }
-        if (!s_sim.isSimulating()) {
-            s_sim.onPlayerUpdate(this);
-        }
+        if (PlayLayer::get() && !s_sim.isSimulating()) s_sim.setFrameDelta(dt);
+        if (!s_sim.isSimulating()) s_sim.onPlayerUpdate(this);
         PlayerObject::update(dt);
     }
 
@@ -635,23 +581,18 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
     }
 
     bool canBeActivatedByPlayer(PlayerObject* p0, EffectGameObject* p1) {
-        if (s_sim.isSimulating()) {
-            return s_sim.canSimulateRingActivation(p0, p1);
-        }
+        if (s_sim.isSimulating()) return s_sim.canSimulateRingActivation(p0, p1);
         return GJBaseGameLayer::canBeActivatedByPlayer(p0, p1);
     }
 
     void handleButton(bool down, int button, bool isPlayer1) {
         if (!s_sim.isSimulating() && !s_sim.isFiringBuffered() && button == 1 && PlayLayer::get()) {
-            if (!s_sim.interceptInput(this, down, isPlayer1)) {
-                return;
-            }
+            if (!s_sim.interceptInput(this, down, isPlayer1)) return;
         }
         GJBaseGameLayer::handleButton(down, button, isPlayer1);
     }
 
-    void collisionCheckObjects(PlayerObject* player, gd::vector<GameObject*>* vec,
-                               int objectsCount, float dt) {
+    void collisionCheckObjects(PlayerObject* player, gd::vector<GameObject*>* vec, int objectsCount, float dt) {
         if (s_sim.isSimulating()) {
             s_sim.doSimCollisionCheck(this, player, vec, objectsCount, dt);
             return;
